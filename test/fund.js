@@ -114,7 +114,7 @@ contract('Fund', function(accounts) {
       from: accountFundAttender1,
       value: web3.toWei(10, "ether")
     });
-    assert.equal(await fund.softCapReached(), true);
+    assert.equal(await fund.isSoftCapReached(), true);
     await fund.sendTransaction({
       from: accountFundAttender1,
       value: web3.toWei(10, "ether")
@@ -123,6 +123,41 @@ contract('Fund', function(accounts) {
       await fund.sendTransaction({
         from: accountFundAttender1,
         value: web3.toWei(0.01, "ether")
+      });
+    }, {
+      Name: 'Error',
+      Message: 'VM Exception while processing transaction: revert',
+    });
+  });
+  it("should be closable", async () => {
+    const [
+      accountFundOwner,
+      accountFundAttender1,
+    ] = accounts;
+
+    const fund = await Fund.new(
+      "simple fund",
+      5,
+      web3.toWei(1, "ether"),
+      web3.toWei(10, "ether"),
+      web3.toWei(100, "ether"),
+      Math.floor(Date.now() / 1000),
+      Math.floor(Date.now() / 1000 + 60), {
+        from: accountFundOwner
+      }
+    );
+    // first recharge should success
+    await fund.sendTransaction({
+      from: accountFundAttender1,
+      value: web3.toWei(10, "ether")
+    });
+    await fund.closeAndWithdraw({
+      from: accountFundOwner
+    });
+    await assertThrowsAsync(async () => {
+      await fund.sendTransaction({
+        from: accountFundAttender1,
+        value: web3.toWei(10, "ether")
       });
     }, {
       Name: 'Error',
@@ -186,7 +221,6 @@ contract('Fund', function(accounts) {
     });
     assert.equal(rechargeResult0.logs.length, 1);
     assert.equal(rechargeResult0.logs[0].event, "FundCollected");
-    assert.equal((await getBalance(accountFundOwner)).toNumber() - originOwnerBalance, web3.toWei(10, "ether"));
 
     const transferTokenResult0 = await testToken1.transfer(rewardDistributor.address, 100 * Math.pow(10, 18), {
       from: accountCoin1Holder
@@ -195,6 +229,13 @@ contract('Fund', function(accounts) {
     assert.equal(transferTokenResult0.logs[0].event, "Transfer");
     const accountTokenBalanceResult0 = await testToken1.balanceOf(rewardDistributor.address);
     assert.equal(accountTokenBalanceResult0.toNumber(), 100 * Math.pow(10, 18));
+
+    await fund.closeAndWithdraw({
+      from: accountFundOwner
+    });
+    const newOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
+    assert(newOwnerBalance - originOwnerBalance > web3.toWei(10 - 0.01, "ether"));
+    assert(newOwnerBalance - originOwnerBalance < web3.toWei(10, "ether"));
 
     await fund.distributeToken(testToken1.address, {
       from: accountFundOwner
@@ -231,7 +272,6 @@ contract('Fund', function(accounts) {
     );
     const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
 
-    const originOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
 
     await fund.sendTransaction({
       from: accountFundAttender1,
@@ -248,12 +288,11 @@ contract('Fund', function(accounts) {
       value: web3.toWei(2, "ether")
     });
 
-    assert.equal((await getBalance(accountFundOwner)).toNumber() - originOwnerBalance, web3.toWei(15, "ether"));
-    
     await rewardDistributor.sendTransaction({
       from: accountFundOwner,
       value: web3.toWei(3, "ether")
     });
+    const originOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
     await testToken1.transfer(rewardDistributor.address, 100 * Math.pow(10, 18), {
       from: accountCoin1Holder
     });
@@ -264,10 +303,18 @@ contract('Fund', function(accounts) {
       from: accountCoin2Holder
     });
 
+    await fund.closeAndWithdraw({
+      from: accountFundOwner
+    });
+    const newOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
+
+    assert(newOwnerBalance - originOwnerBalance > web3.toWei(15 - 0.01, "ether"));
+    assert(newOwnerBalance - originOwnerBalance < web3.toWei(15, "ether"));
+    
+
     assert.equal((await testToken1.balanceOf(rewardDistributor.address)).toNumber(), 100 * Math.pow(10, 18));
     assert.equal((await testToken2.balanceOf(rewardDistributor.address)).toNumber(), 250 * Math.pow(10, 18));
     
-
 
     await fund.distributeToken(testToken1.address, {
       from: accountFundOwner
@@ -308,6 +355,79 @@ contract('Fund', function(accounts) {
       accountFundAttender1,
       accountFundAttender2,
     ] = [
+      accounts[4],
+      accounts[5],
+      accounts[6],
+    ];
+
+    const fund = await Fund.new(
+      "ether fund",
+      5,
+      web3.toWei(1, "ether"),
+      web3.toWei(10, "ether"),
+      web3.toWei(100, "ether"),
+      Math.floor(Date.now() / 1000),
+      Math.floor(Date.now() / 1000 + 60), {
+        from: accountFundOwner
+      }
+    );
+    const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
+
+    await fund.sendTransaction({
+      from: accountFundAttender1,
+      value: web3.toWei(10, "ether")
+    });
+    await fund.sendTransaction({
+      from: accountFundAttender2,
+      value: web3.toWei(2, "ether")
+    });
+    await fund.sendTransaction({
+      from: accountFundAttender2,
+      value: web3.toWei(18, "ether")
+    });
+
+
+    await fund.closeAndWithdraw({
+      from: accountFundOwner
+    });
+
+    // send profit as eth
+    await rewardDistributor.sendTransaction({
+      from: accountFundOwner,
+      value: web3.toWei(75, "ether")
+    });
+
+    const originFundAttender1Balance = (await getBalance(accountFundAttender1)).toNumber();
+    const originFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
+    const originFundOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
+
+    // distribute them
+    await fund.distributeEther({
+      from: accountFundOwner
+    });
+
+    const updatedFundAttender1Balance = (await getBalance(accountFundAttender1)).toNumber();
+    const updatedFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
+    const updatedFundOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
+    
+    assert.equal(
+      updatedFundAttender1Balance - originFundAttender1Balance,
+      web3.toWei(10 / (10 + 2 + 18) * 75 * 0.95, "ether"));
+    assert.equal(
+      updatedFundAttender2Balance - originFundAttender2Balance,
+      web3.toWei((2 + 18) / (10 + 2 + 18) * 75 * 0.95, "ether"));
+    // consider some gas consume
+    assert(
+      updatedFundOwnerBalance - originFundOwnerBalance > web3.toWei(75 * 0.05 - 0.1, "ether"));
+    assert(
+      updatedFundOwnerBalance - originFundOwnerBalance < web3.toWei(75 * 0.05, "ether"));
+  });
+  it("can do refund", async () => {
+    const [
+      accountFundOwner,
+      accountFundAttender1,
+      accountFundAttender2,
+    ] = [
       accounts[7],
       accounts[8],
       accounts[9],
@@ -340,35 +460,115 @@ contract('Fund', function(accounts) {
     });
 
 
-    // send profit as eth
-    await rewardDistributor.sendTransaction({
-      from: accountFundOwner,
-      value: web3.toWei(75, "ether")
-    });
-
     const originFundAttender1Balance = (await getBalance(accountFundAttender1)).toNumber();
     const originFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
-    const originFundOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
 
-    // distribute them
-    await fund.distributeToken(0, {
+    // refund
+    await fund.closeAndRefundAll({
       from: accountFundOwner
     });
 
     const updatedFundAttender1Balance = (await getBalance(accountFundAttender1)).toNumber();
     const updatedFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
-    const updatedFundOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
     
     assert.equal(
       updatedFundAttender1Balance - originFundAttender1Balance,
-      web3.toWei(10 / (10 + 2 + 18) * 75 * 0.95, "ether"));
+      web3.toWei(10, "ether"));
     assert.equal(
       updatedFundAttender2Balance - originFundAttender2Balance,
-      web3.toWei((2 + 18) / (10 + 2 + 18) * 75 * 0.95, "ether"));
-    // consider some gas consume
-    assert(
-      updatedFundOwnerBalance - originFundOwnerBalance > web3.toWei(75 * 0.05 - 0.1, "ether"));
-    assert(
-      updatedFundOwnerBalance - originFundOwnerBalance < web3.toWei(75 * 0.05, "ether"));
+      web3.toWei(2 + 18, "ether"));
+  });
+
+  it("can do individual refund", async () => {
+    const [
+      accountFundOwner,
+      accountFundAttender1,
+      accountFundAttender2,
+      accountFundAttender3,
+    ] = accounts;
+
+    const fund = await Fund.new(
+      "ether fund",
+      5,
+      web3.toWei(1, "ether"),
+      web3.toWei(20, "ether"),
+      web3.toWei(100, "ether"),
+      Math.floor(Date.now() / 1000),
+      Math.floor(Date.now() / 1000 + 60), {
+        from: accountFundOwner
+      }
+    );
+    const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
+
+    // Attender3 refunded all
+    await fund.sendTransaction({
+      from: accountFundAttender3,
+      value: web3.toWei(18, "ether")
+    });
+    await fund.refund({
+      from: accountFundAttender3
+    });
+    await fund.sendTransaction({
+      from: accountFundAttender2,
+      value: web3.toWei(18, "ether")
+    });
+    await fund.sendTransaction({
+      from: accountFundAttender1,
+      value: web3.toWei(1, "ether")
+    });
+    // Attender2 refunded first 18 eth
+    await fund.refund({
+      from: accountFundAttender2
+    });
+    await fund.sendTransaction({
+      from: accountFundAttender1,
+      value: web3.toWei(9, "ether")
+    });
+    // Attender3 then give another 10 eth
+    await fund.sendTransaction({
+      from: accountFundAttender2,
+      value: web3.toWei(10, "ether")
+    });
+    // soft cap reached, cannot go refund
+    await assertThrowsAsync(async () => {
+      await fund.refund({
+        from: accountFundAttender2
+      });
+    }, {
+      Name: 'Error',
+      Message: 'VM Exception while processing transaction: revert',
+    });
+
+    await fund.closeAndWithdraw({
+      from: accountFundOwner
+    });
+    // send profit as eth
+    await rewardDistributor.sendTransaction({
+      from: accountFundOwner,
+      value: web3.toWei(40, "ether")
+    });
+
+    const originFundAttender1Balance = (await getBalance(accountFundAttender1)).toNumber();
+    const originFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
+    const originFundAttender3Balance = (await getBalance(accountFundAttender3)).toNumber();
+
+    // distribute them
+    await fund.distributeEther({
+      from: accountFundOwner
+    });
+
+    const updatedFundAttender1Balance = (await getBalance(accountFundAttender1)).toNumber();
+    const updatedFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
+    const updatedFundAttender3Balance = (await getBalance(accountFundAttender3)).toNumber();
+    
+    assert.equal(
+      updatedFundAttender1Balance - originFundAttender1Balance,
+      web3.toWei(20 * 0.95, "ether"));
+    assert.equal(
+      updatedFundAttender2Balance - originFundAttender2Balance,
+      web3.toWei(20 * 0.95, "ether"));
+    assert.equal(
+      updatedFundAttender3Balance - originFundAttender3Balance,
+      0);
   });
 });

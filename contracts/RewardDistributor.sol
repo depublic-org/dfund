@@ -12,6 +12,7 @@ contract RewardDistributor is Ownable {
     address public distributor;
 
     event RewardDistributed(address _tokenAddress, uint256 _amount, address _receiverAddress);
+    event Refunded(address _tokenAddress, uint256 _amount, address _receiverAddress);
     event Log(string _log, address _a1, uint256 _a2, bool _r);
     constructor(
         address _distributor,
@@ -20,15 +21,16 @@ contract RewardDistributor is Ownable {
         public
         Ownable() 
     {
-        assert(_sharePresentForDistributor >= 0);
-        assert(_sharePresentForDistributor <= 100);
-        assert(_distributor != address(0));
+        require(
+            _sharePresentForDistributor >= 0 && _sharePresentForDistributor <= 100,
+            "sharePresentForDistributor should be between 0 and 100");
+        require(_distributor != address(0), "distributor address required");
         
         distributor = _distributor;
         sharePresentForDistributor = _sharePresentForDistributor;
     }
     function addShare(address _user, int256 _share) public onlyOwner {
-        assert(_share != 0);
+        require(_share != 0, "share is empty");
 
         uint256 newShare = _share > 0 ? shareAmount[_user].add(uint256(_share)) : shareAmount[_user].sub(uint256(-_share));
         if (newShare > 0) {
@@ -39,6 +41,25 @@ contract RewardDistributor is Ownable {
             }
         }
     }
+    function clearShare() public onlyOwner {
+        uint userLength = userList.length;
+        for (uint j = 0; j < userLength; j++) {
+            address userAddress = userList[j];
+            delete shareExists[userAddress];
+            delete shareAmount[userAddress];
+        }
+        delete userList;
+    }
+
+    function refundShare(address _user) public onlyOwner returns (uint256) {
+        require(shareExists[_user], "no ether to refund");
+        uint256 share = shareAmount[_user];
+        if (share > 0) {
+            shareAmount[_user] = 0;
+            sendWeiOrToken(address(0), share, _user, true);
+        }
+    }
+
 
     /**
      * @dev fallback function
@@ -46,59 +67,71 @@ contract RewardDistributor is Ownable {
      */
     function () external payable {
     }
-
-    function distributeToken(address _tokenAddress) public onlyOwner {
+    function distributeToken(address _tokenAddress, bool _isRefund) public onlyOwner {
+        uint256 balance;
         if (_tokenAddress == address(0)) {
             // distribute Wei
-            distribute(_tokenAddress, address(this).balance);
+            balance = address(this).balance;
+            if (balance == 0) return;
+            distribute(_tokenAddress, balance, _isRefund);
         } else {
             // distribute ERC20
             ERC20 token = ERC20(_tokenAddress);
-            distribute(_tokenAddress, token.balanceOf(this));
+            balance = token.balanceOf(this);
+            if (balance == 0) return;
+            distribute(_tokenAddress, balance, _isRefund);
         }
     }
 
-    function sendWeiOrToken(address _tokenAddress, uint256 _amount, address _to) internal {
+    function sendWeiOrToken(address _tokenAddress, uint256 _amount, address _to, bool _isRefund) internal {
         if (_tokenAddress == address(0)) {
             // distribute Wei
             // https://ethereum.stackexchange.com/questions/38387/contract-address-transfer-method-gas-cost
             _to.transfer(_amount);
-            emit Log("eth sent", _to, _amount, false);
+            // emit Log("eth sent", _to, _amount, false);
         } else {
             // distribute ERC20
             ERC20 token = ERC20(_tokenAddress);
             bool sent = token.transfer(_to, _amount);
-            if (!sent) {
-                revert();
-            }
-            emit Log("erc20 sent", _to, _amount, false);
+            require(sent, "token send failure");
+            // emit Log("erc20 sent", _to, _amount, false);
         }
-        emit RewardDistributed(_tokenAddress, _amount, _to);
+        if (_isRefund) {
+            emit Refunded(_tokenAddress, _amount, _to);
+        } else {
+            emit RewardDistributed(_tokenAddress, _amount, _to);
+        }
     }
     function getTotalShare() internal view returns (uint256) {
         uint256 totalShare = 0;
         uint userLength = userList.length;
         for (uint i = 0; i < userLength; i++) {
             uint256 shareForUser = shareAmount[userList[i]];
-            assert(shareForUser >= 0);
             totalShare += shareForUser;
         }
         return totalShare;
     }
-    function distribute(address _tokenAddress, uint256 _totalAmount) internal {
+    function distribute(address _tokenAddress, uint256 _totalAmount, bool _isRefund) internal {
+        // TODO check for remaining gas
         // emit Log("distribute", _tokenAddress, _totalAmount, false);
-        assert(_totalAmount > 0);
-        // TODO check gas
+        require(_totalAmount > 0, "totalAmount is empty");
         uint userLength = userList.length;
         uint256 totalShare = getTotalShare();
         uint256 amountLeftForDistributor = _totalAmount;
-        assert(totalShare > 0);
+        require(totalShare > 0, "there is no share contributor");
         for (uint j = 0; j < userLength; j++) {
             address userAddress = userList[j];
-            uint256 amountForUser = _totalAmount.mul(shareAmount[userAddress]).div(totalShare).mul(100 - sharePresentForDistributor).div(100);
+            uint256 amountForUser = _totalAmount.mul(shareAmount[userAddress]).div(totalShare);
+            if (!_isRefund) {
+                amountForUser = amountForUser.mul(100 - sharePresentForDistributor).div(100);
+            }
             amountLeftForDistributor = amountLeftForDistributor.sub(amountForUser);
-            sendWeiOrToken(_tokenAddress, amountForUser, userAddress);
+            if (amountForUser > 0) {
+                sendWeiOrToken(_tokenAddress, amountForUser, userAddress, _isRefund);
+            }
         }
-        sendWeiOrToken(_tokenAddress, amountLeftForDistributor, distributor);
+        if (amountLeftForDistributor > 0) {
+            sendWeiOrToken(_tokenAddress, amountLeftForDistributor, distributor, _isRefund);
+        }
     }
 }
