@@ -5,9 +5,9 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 contract RewardDistributor is Ownable {
     using SafeMath for uint256;
     
-    address[] public userList;
+    address[] public investor;
     mapping (address => uint256) public shareAmount;
-    mapping (address => bool) public shareExists;
+    mapping (address => bool) shareExists;
     uint16 public sharePresentForDistributor;
     address public distributor;
 
@@ -29,29 +29,32 @@ contract RewardDistributor is Ownable {
         distributor = _distributor;
         sharePresentForDistributor = _sharePresentForDistributor;
     }
-    function addShare(address _user, int256 _share) public onlyOwner {
+    function investorCount() external view returns (uint) {
+        return investor.length;
+    }
+    function addShare(address _user, int256 _share) external onlyOwner {
         require(_share != 0, "share is empty");
 
         uint256 newShare = _share > 0 ? shareAmount[_user].add(uint256(_share)) : shareAmount[_user].sub(uint256(-_share));
         if (newShare > 0) {
             shareAmount[_user] = newShare;
             if (!shareExists[_user]) {
-                userList.push(_user);
+                investor.push(_user);
                 shareExists[_user] = true;
             }
         }
     }
-    function clearShare() public onlyOwner {
-        uint userLength = userList.length;
+    function clearShare() external onlyOwner {
+        uint userLength = investor.length;
         for (uint j = 0; j < userLength; j++) {
-            address userAddress = userList[j];
+            address userAddress = investor[j];
             delete shareExists[userAddress];
             delete shareAmount[userAddress];
         }
-        delete userList;
+        delete investor;
     }
 
-    function refundShare(address _user) public onlyOwner returns (uint256) {
+    function refundShare(address _user) external onlyOwner returns (uint256) {
         require(shareExists[_user], "no ether to refund");
         uint256 share = shareAmount[_user];
         if (share > 0) {
@@ -67,7 +70,7 @@ contract RewardDistributor is Ownable {
      */
     function () external payable {
     }
-    function distributeToken(address _tokenAddress, bool _isRefund) public onlyOwner {
+    function distributeToken(address _tokenAddress, bool _isRefund) external onlyOwner returns (uint256) {
         uint256 balance;
         if (_tokenAddress == address(0)) {
             // distribute Wei
@@ -81,6 +84,7 @@ contract RewardDistributor is Ownable {
             if (balance == 0) return;
             distribute(_tokenAddress, balance, _isRefund);
         }
+        return balance;
     }
 
     function sendWeiOrToken(address _tokenAddress, uint256 _amount, address _to, bool _isRefund) internal {
@@ -104,9 +108,9 @@ contract RewardDistributor is Ownable {
     }
     function getTotalShare() internal view returns (uint256) {
         uint256 totalShare = 0;
-        uint userLength = userList.length;
+        uint userLength = investor.length;
         for (uint i = 0; i < userLength; i++) {
-            uint256 shareForUser = shareAmount[userList[i]];
+            uint256 shareForUser = shareAmount[investor[i]];
             totalShare += shareForUser;
         }
         return totalShare;
@@ -115,12 +119,12 @@ contract RewardDistributor is Ownable {
         // TODO check for remaining gas
         // emit Log("distribute", _tokenAddress, _totalAmount, false);
         require(_totalAmount > 0, "totalAmount is empty");
-        uint userLength = userList.length;
+        uint userLength = investor.length;
         uint256 totalShare = getTotalShare();
         uint256 amountLeftForDistributor = _totalAmount;
         require(totalShare > 0, "there is no share contributor");
         for (uint j = 0; j < userLength; j++) {
-            address userAddress = userList[j];
+            address userAddress = investor[j];
             uint256 amountForUser = _totalAmount.mul(shareAmount[userAddress]).div(totalShare);
             if (!_isRefund) {
                 amountForUser = amountForUser.mul(100 - sharePresentForDistributor).div(100);

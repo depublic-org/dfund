@@ -22,7 +22,7 @@ contract Fund is Ownable {
     event Log(string _log, address _a1, uint256 _a2, bool _r);
 
     function isClosed() public view returns (bool) {
-        return closed || block.timestamp > closingTime;
+        return closed || (closingTime > 0 && block.timestamp > closingTime);
     }
 
     function () external payable {
@@ -39,15 +39,15 @@ contract Fund is Ownable {
     }
 
     function isSoftCapReached() public view returns (bool) {
-        return totalFund >= softCap;
+        return softCap > 0 && totalFund >= softCap;
     }
 
-    function distributeEther() public onlyOwner {
+    function distributeEther() external onlyOwner returns (uint256) {
         require(isClosed(), "fund is still open");
-        rewardDistributor.distributeToken(address(0), false);
+        return rewardDistributor.distributeToken(address(0), false);
     }
 
-    function closeAndRefundAll() public onlyOwner {
+    function closeAndRefundAll() external onlyOwner {
         // TODO: check for gas
         require(!isClosed(), "fund is closed");
         closed = true;
@@ -60,7 +60,7 @@ contract Fund is Ownable {
         rewardDistributor.distributeToken(address(0), true);
     }
 
-    function closeAndWithdraw() public onlyOwner {
+    function closeAndWithdraw() external onlyOwner {
         // TODO: check for gas
         require(!isClosed(), "fund is closed");
         closed = true;
@@ -72,7 +72,7 @@ contract Fund is Ownable {
         }
     }
 
-    function refund() public {
+    function refund() external {
         // TODO check for gas
         require(!isSoftCapReached(), "soft cap is reached");
         require(!isClosed(), "fund is closed");
@@ -80,14 +80,14 @@ contract Fund is Ownable {
         require(userShareAmount > 0, "user share is empty");
         require(address(this).balance >= userShareAmount, "balance not enough");
         totalFund = totalFund.sub(userShareAmount);
-        rewardDistributor.transfer(userShareAmount);
+        address(rewardDistributor).transfer(userShareAmount);
         rewardDistributor.refundShare(msg.sender);
     }
 
-    function distributeToken(address _tokenAddress) public onlyOwner {
+    function distributeToken(address _tokenAddress) external onlyOwner returns (uint256) {
         require(_tokenAddress != address(0), "token address cannot be empty");
         require(isClosed(), "fund is still open");
-        rewardDistributor.distributeToken(_tokenAddress, false);
+        return rewardDistributor.distributeToken(_tokenAddress, false);
     }
 
     // function refundToken(address _tokenAddress) public onlyOwner {
