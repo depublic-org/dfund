@@ -46,6 +46,9 @@ contract('Fund', function(accounts) {
         from: accountFundOwner
       }
     );
+    const receipt = await web3.eth.getTransactionReceipt(fund.transactionHash);
+    console.log(`gas: ${receipt.gasUsed}`);
+    assert.isBelow(receipt.gasUsed, 3500000);
     // first recharge should success
     await fund.sendTransaction({
       from: accountFundAttender1,
