@@ -3,10 +3,7 @@ import "openzeppelin-solidity/contracts/token/ERC20/StandardToken.sol";
 import "openzeppelin-solidity/contracts/token/ERC20/DetailedERC20.sol";
 
 contract TestToken2 is StandardToken, DetailedERC20 {
-    string public constant name = "Test2 Token";
-    string public constant symbol = "T2";
-    uint8 public constant decimals = 18;
-    constructor() public {
+    constructor() public DetailedERC20("Test2 Token", "T2", 18) {
         totalSupply_ = 200000 * (10**18);
         balances[msg.sender] = totalSupply_;
     }

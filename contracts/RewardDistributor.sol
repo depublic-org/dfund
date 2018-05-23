@@ -11,9 +11,7 @@ contract RewardDistributor is Ownable {
     uint16 public sharePresentForDistributor;
     address public distributor;
 
-    event RewardDistributed(address _tokenAddress, uint256 _amount, address _receiverAddress);
-    event Refunded(address _tokenAddress, uint256 _amount, address _receiverAddress);
-    event Log(string _log, address _a1, uint256 _a2, bool _r);
+    // event Log(string _log, address _a1, uint256 _a2, bool _r);
     constructor(
         address _distributor,
         uint16 _sharePresentForDistributor
@@ -59,7 +57,7 @@ contract RewardDistributor is Ownable {
         uint256 share = shareAmount[_user];
         if (share > 0) {
             shareAmount[_user] = 0;
-            sendWeiOrToken(address(0), share, _user, true);
+            sendWeiOrToken(address(0), share, _user);
         }
     }
 
@@ -87,7 +85,7 @@ contract RewardDistributor is Ownable {
         return balance;
     }
 
-    function sendWeiOrToken(address _tokenAddress, uint256 _amount, address _to, bool _isRefund) internal {
+    function sendWeiOrToken(address _tokenAddress, uint256 _amount, address _to) internal {
         if (_tokenAddress == address(0)) {
             // distribute Wei
             // https://ethereum.stackexchange.com/questions/38387/contract-address-transfer-method-gas-cost
@@ -99,11 +97,6 @@ contract RewardDistributor is Ownable {
             bool sent = token.transfer(_to, _amount);
             require(sent, "token send failure");
             // emit Log("erc20 sent", _to, _amount, false);
-        }
-        if (_isRefund) {
-            emit Refunded(_tokenAddress, _amount, _to);
-        } else {
-            emit RewardDistributed(_tokenAddress, _amount, _to);
         }
     }
     function getTotalShare() internal view returns (uint256) {
@@ -131,11 +124,11 @@ contract RewardDistributor is Ownable {
             }
             amountLeftForDistributor = amountLeftForDistributor.sub(amountForUser);
             if (amountForUser > 0) {
-                sendWeiOrToken(_tokenAddress, amountForUser, userAddress, _isRefund);
+                sendWeiOrToken(_tokenAddress, amountForUser, userAddress);
             }
         }
         if (amountLeftForDistributor > 0) {
-            sendWeiOrToken(_tokenAddress, amountLeftForDistributor, distributor, _isRefund);
+            sendWeiOrToken(_tokenAddress, amountLeftForDistributor, distributor);
         }
     }
 }

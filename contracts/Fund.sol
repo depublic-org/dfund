@@ -6,35 +6,37 @@ import "./RewardDistributor.sol";
 contract Fund is Ownable {
     using SafeMath for uint256;
 
-    event FundCollected(address _tokenAddress, uint256 _amount, address _senderAddress);
-    event FundWithdrawn(address _tokenAddress, uint256 _amount, address _receiverAddress);
-    
     RewardDistributor public rewardDistributor;
     string public description;
     uint256 public minimumInvestAmount;
     uint256 public softCap;
     uint256 public hardCap;
-    uint256 public openingTime;
-    uint256 public closingTime;
+    uint64 public openingTime;
+    uint64 public closingTime;
     uint256 public totalFund;
     bool closed;
     
-    event Log(string _log, address _a1, uint256 _a2, bool _r);
+    // event Log(string _log, address _a1, uint256 _a2, bool _r);
 
     function isClosed() public view returns (bool) {
         return closed || (closingTime > 0 && block.timestamp > closingTime);
     }
-
     function () external payable {
         if (msg.value > 0) {
             require(!isClosed(), "fund is closed");
             require(block.timestamp >= openingTime, "fund has not started yet");
             require(msg.value >= minimumInvestAmount, "there is a minimum invest amount");
+
+            uint size;
+            address sender = msg.sender;
+            assembly { size := extcodesize(sender) }
+            require(size == 0, "doesn't support contract address recharge");
+
             uint256 newFund = totalFund.add(msg.value);
             require (hardCap == 0 || newFund <= hardCap, "hard cap reached");
             totalFund = newFund;
             rewardDistributor.addShare(msg.sender, int256(msg.value));
-            emit FundCollected(address(0), msg.value, msg.sender);
+            // emit FundCollected(address(0), msg.value, msg.sender);
         }
     }
 
@@ -68,7 +70,7 @@ contract Fund is Ownable {
         if (myEtherBalance > 0) {
             // send all remaining ether to reward distributor
             owner.transfer(myEtherBalance);
-            emit FundWithdrawn(address(0), myEtherBalance, owner);
+            // emit FundWithdrawn(address(0), myEtherBalance, owner);
         }
     }
 
@@ -101,8 +103,8 @@ contract Fund is Ownable {
         uint256 _minimumInvestAmount,
         uint256 _softCap,
         uint256 _hardCap,
-        uint256 _openingTime,
-        uint256 _closingTime
+        uint64 _openingTime,
+        uint64 _closingTime
     )
         public
         Ownable() 

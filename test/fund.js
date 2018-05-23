@@ -219,14 +219,10 @@ contract('Fund', function(accounts) {
       from: accountFundAttender1,
       value: web3.toWei(10, "ether")
     });
-    assert.equal(rechargeResult0.logs.length, 1);
-    assert.equal(rechargeResult0.logs[0].event, "FundCollected");
 
     const transferTokenResult0 = await testToken1.transfer(rewardDistributor.address, 100 * Math.pow(10, 18), {
       from: accountCoin1Holder
     });
-    assert.equal(transferTokenResult0.logs.length, 1);
-    assert.equal(transferTokenResult0.logs[0].event, "Transfer");
     const accountTokenBalanceResult0 = await testToken1.balanceOf(rewardDistributor.address);
     assert.equal(accountTokenBalanceResult0.toNumber(), 100 * Math.pow(10, 18));
 
