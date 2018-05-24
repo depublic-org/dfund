@@ -4,12 +4,19 @@ import "openzeppelin-solidity/contracts/math/SafeMath.sol";
 
 library DFundLib {
     using SafeMath for uint256;
+    enum Read {
+        DumpData,
+        DumpInvestorAddressAndAmount
+    }
+    enum Operation {
+        Refund,
+        DistributeToken,
+        CloseAndWithdraw,
+        CloseAndRefundAll
+    }
     struct Data {
-        string description;
-        uint256 minimumInvestAmount;
         uint256 softCap;
         uint256 hardCap;
-        uint64 openingTime;
         uint64 closingTime;
         uint256 totalFund;
         bool closed;
@@ -18,19 +25,80 @@ library DFundLib {
         address[] investor;
         mapping (address => uint256) shareAmount;
         mapping (address => bool) shareExists;
-        uint16 sharePresentForDistributor;
+        uint8 sharePresentForDistributor;
         address operator;
     }
+    function read(Data storage self, Read _o, uint _args, address _sender) external view returns (uint256[]) {
+        uint256[] memory result;
+        if (_o == Read.DumpData) {
+            result = new uint256[](7);
+            result[0] = self.softCap;
+            result[1] = self.hardCap;
+            result[2] = self.closingTime;
+            result[3] = self.totalFund;
+            result[4] = (self.closed || (self.closingTime > 0 && block.timestamp > self.closingTime)) ? 1 : 0;
+            result[5] = self.investor.length;
+            result[6] = self.shareAmount[_sender];
+        } else if (_o == Read.DumpInvestorAddressAndAmount) {
+            uint userLength = self.investor.length;
+            require(_args <= userLength);
+            result = new uint256[](_args * 2);
+            uint i = 0;
+            for (uint j = userLength - _args; j < userLength; j++) {
+                address addr = self.investor[j];
+                result[i] = uint256(addr);
+                result[i+1] = self.shareAmount[addr];
+                i += 2;
+            }
+        } else {
+            result = new uint256[](0);
+        }
+        return result;
+    }
+    function op(Data storage self, Operation _o, uint256 _args, address _sender) external {
+        if (_o == Operation.Refund) {
+            // TODO check for gas
+            require(!isSoftCapReached(self));
+            require(!isClosed(self));
+            uint256 userShareAmount = self.shareAmount[_sender];
+            require(userShareAmount > 0);
+            require(address(this).balance >= userShareAmount);
+            self.totalFund = self.totalFund.sub(userShareAmount);
+            self.shareAmount[_sender] = 0;
+            sendWeiOrToken(address(0), userShareAmount, _sender);
+        } else if (_o == Operation.DistributeToken) {
+            require(_sender == self.operator);
+            distributeToken(self, address(_args), false);
+        } else if (_o == Operation.CloseAndWithdraw) {
+            // TODO: check for gas
+            require(_sender == self.operator);
+            require(!isClosed(self));
+            self.closed = true;
+            uint256 myEtherBalance = address(this).balance;
+            if (myEtherBalance > 0) {
+                // send all remaining ether to reward distributor
+                self.operator.transfer(myEtherBalance);
+                // emit FundWithdrawn(address(0), myEtherBalance, owner);
+            }
+        } else if (_o == Operation.CloseAndRefundAll) {
+            // TODO: check for gas
+            require(_sender == self.operator);
+            require(!isClosed(self));
+            self.closed = true;
+            self.totalFund = 0;
+            distributeToken(self, address(0), true);
+        }
+    }
+
     //// invest part ////
 
-    function checkPay(Data storage self, uint256 _value, address _sender) public returns (bool) {
-        require(block.timestamp >= self.openingTime);
+    function onPaid(Data storage self, uint256 _value, address _sender) external returns (bool) {
         if (isClosed(self)) {
             // after closed, DFund only accept eth reward from operator
             require(_sender == self.operator);
         } else {
             // before closing, DFund accept eth from crowd
-            require(_value >= self.minimumInvestAmount);
+            // require(_value >= self.minimumInvestAmount);
 
             uint size;
             assembly { size := extcodesize(_sender) }
@@ -49,50 +117,14 @@ library DFundLib {
         }
     }
 
-    function isClosed(Data storage self) public view returns (bool) {
+    function isClosed(Data storage self) internal view returns (bool) {
         return self.closed || (self.closingTime > 0 && block.timestamp > self.closingTime);
     }
-    function isSoftCapReached(Data storage self) public view returns (bool) {
+    function isSoftCapReached(Data storage self) internal view returns (bool) {
         return self.softCap > 0 && self.totalFund >= self.softCap;
     }
 
-    function closeAndRefundAll(Data storage self) external {
-        // TODO: check for gas
-        require(!isClosed(self));
-        self.closed = true;
-        self.totalFund = 0;
-        distributeToken(self, address(0), true);
-    }
-
-    function closeAndWithdraw(Data storage self) external {
-        // TODO: check for gas
-        require(!isClosed(self));
-        self.closed = true;
-        uint256 myEtherBalance = address(this).balance;
-        if (myEtherBalance > 0) {
-            // send all remaining ether to reward distributor
-            self.operator.transfer(myEtherBalance);
-            // emit FundWithdrawn(address(0), myEtherBalance, owner);
-        }
-    }
-
     //// distribute part ////
-    function investorCount(Data storage self) external view returns (uint) {
-        return self.investor.length;
-    }
-
-    function refund(Data storage self, address _user) external {
-        // TODO check for gas
-        require(!isSoftCapReached(self));
-        require(!isClosed(self));
-        uint256 userShareAmount = self.shareAmount[_user];
-        require(userShareAmount > 0);
-        require(address(this).balance >= userShareAmount);
-        self.totalFund = self.totalFund.sub(userShareAmount);
-        self.shareAmount[_user] = 0;
-        sendWeiOrToken(address(0), userShareAmount, _user);
-    }
-
 
     // function clearShare(Data storage self) external {
     //     uint userLength = self.investor.length;
@@ -104,7 +136,7 @@ library DFundLib {
     //     delete self.investor;
     // }
 
-    function distributeToken(Data storage self, address _tokenAddress, bool _isRefund) public {
+    function distributeToken(Data storage self, address _tokenAddress, bool _isRefund) internal {
         require(isClosed(self));
         uint256 balance;
         if (_tokenAddress == address(0)) {

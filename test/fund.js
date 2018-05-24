@@ -29,8 +29,46 @@ async function sleep(time) {
   })
 }
 
+const ReadData = 0;
+const ReadAttender = 1;
+
+
+const OperationRefund = 0;
+const OperationDistributeToken = 1;
+const OperationCloseAndWithdraw = 2;
+const OperationCloseAndRefundall = 3;
+
+
 contract('DFund', function(accounts) {
-  it("should follow minimum invest amount settings", async () => {
+  it("can pass basic checkings", async () => {
+    const [
+      accountCoin1Holder,
+      accountFundOwner,
+    ] = accounts;
+
+    const testToken1 = await TestToken1.new({
+      from: accountCoin1Holder
+    });
+    const testToken1TotalSupply = (await testToken1.totalSupply()).toNumber();
+    assert.equal(
+      (await testToken1.balanceOf(accountCoin1Holder)).toNumber(),
+      testToken1TotalSupply);
+    const toTime = Math.floor(Date.now() / 1000 + 60);
+    const fund = await DFund.new(
+      "simple fund",
+      5,
+      web3.toWei(10, "ether"),
+      web3.toWei(100, "ether"),
+      toTime, {
+        from: accountFundOwner
+      }
+    );
+    // softCap, hardCap, closingTime, totalFund, isClosed, investorCount, myInvestedAmount
+    assert.equal(JSON.stringify(await fund.read(ReadData, 0)), `["10000000000000000000","100000000000000000000","${toTime}","0","0","0","0"]`);
+    assert.equal(await fund.description(), "simple fund");
+    
+  });
+  it("should consume minimal gas when create", async () => {
     const [
       accountFundOwner,
       accountFundAttender1,
@@ -38,10 +76,8 @@ contract('DFund', function(accounts) {
     const unusedFund = await DFund.new(
       "unused fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000 + 60), {
         from: accountFundOwner
       }
@@ -49,33 +85,17 @@ contract('DFund', function(accounts) {
     const fund = await DFund.new(
       "test fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000 + 60), {
         from: accountFundOwner
       }
     );
     const receipt1 = await web3.eth.getTransactionReceipt(unusedFund.transactionHash);
-    console.log(`1st time gas usage: ${receipt1.gasUsed}`);
+    console.log(`\t1st time gas usage: ${receipt1.gasUsed}`);
     const receipt2 = await web3.eth.getTransactionReceipt(fund.transactionHash);
-    console.log(`2nd time gas usage: ${receipt2.gasUsed}`);
-    assert.isBelow(receipt2.gasUsed, 900000);
-    // first recharge should success
-    await fund.sendTransaction({
-      from: accountFundAttender1,
-      value: web3.toWei(10, "ether")
-    });
-    await assertThrowsAsync(async () => {
-      await fund.sendTransaction({
-        from: accountFundAttender1,
-        value: web3.toWei(0.99, "ether")
-      });
-    }, {
-      Name: 'Error',
-      Message: 'VM Exception while processing transaction: revert',
-    });
+    console.log(`\t2nd time gas usage: ${receipt2.gasUsed}`);
+    assert.isBelow(receipt2.gasUsed, 590000);
   });
   it("should follow time settings", async () => {
     const [
@@ -85,10 +105,8 @@ contract('DFund', function(accounts) {
     const fund = await DFund.new(
       "test fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000 + 10), {
         from: accountFundOwner
       }
@@ -114,14 +132,13 @@ contract('DFund', function(accounts) {
       accountFundOwner,
       accountFundAttender1,
     ] = accounts;
+    const closingTime = Math.floor(Date.now() / 1000 + 60);
     const fund = await DFund.new(
       "test fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(20, "ether"),
-      Math.floor(Date.now() / 1000),
-      Math.floor(Date.now() / 1000 + 60), {
+      closingTime, {
         from: accountFundOwner
       }
     );
@@ -130,7 +147,11 @@ contract('DFund', function(accounts) {
       from: accountFundAttender1,
       value: web3.toWei(10, "ether")
     });
-    assert.equal(await fund.isSoftCapReached(), true);
+    // softCap, hardCap, closingTime, totalFund, isClosed, investorCount, myInvestedAmount
+    assert.equal(JSON.stringify(await fund.read(ReadData, 0, {
+      from: accountFundAttender1,
+    })), `["10000000000000000000","20000000000000000000","${closingTime}","10000000000000000000","0","1","10000000000000000000"]`);
+    
     await fund.sendTransaction({
       from: accountFundAttender1,
       value: web3.toWei(10, "ether")
@@ -154,10 +175,8 @@ contract('DFund', function(accounts) {
     const fund = await DFund.new(
       "simple fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000 + 60), {
         from: accountFundOwner
       }
@@ -167,7 +186,7 @@ contract('DFund', function(accounts) {
       from: accountFundAttender1,
       value: web3.toWei(10, "ether")
     });
-    await fund.closeAndWithdraw({
+    await fund.op(OperationCloseAndWithdraw, 0, {
       from: accountFundOwner
     });
     await assertThrowsAsync(async () => {
@@ -180,31 +199,6 @@ contract('DFund', function(accounts) {
       Message: 'VM Exception while processing transaction: revert',
     });
   });
-  it("can pass basic checkings", async () => {
-    const [
-      accountCoin1Holder,
-      accountFundOwner,
-    ] = accounts;
-
-    const testToken1 = await TestToken1.new({
-      from: accountCoin1Holder
-    });
-    const testToken1TotalSupply = (await testToken1.totalSupply()).toNumber();
-    assert.equal(
-      (await testToken1.balanceOf(accountCoin1Holder)).toNumber(),
-      testToken1TotalSupply);
-    const fund = await DFund.new(
-      "simple fund",
-      5,
-      web3.toWei(1, "ether"),
-      web3.toWei(10, "ether"),
-      web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
-      Math.floor(Date.now() / 1000 + 60), {
-        from: accountFundOwner
-      }
-    );
-  });
   it("can do basic token distribution", async () => {
     const [
       accountCoin1Holder,
@@ -215,13 +209,13 @@ contract('DFund', function(accounts) {
     const testToken1 = await TestToken1.new({
       from: accountCoin1Holder
     });
+    const receipt1 = await web3.eth.getTransactionReceipt(testToken1.transactionHash);
+    console.log(`\ttoken1 gas usage: ${receipt1.gasUsed}`);
     const fund = await DFund.new(
       "simple fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000 + 60), {
         from: accountFundOwner
       }
@@ -239,14 +233,14 @@ contract('DFund', function(accounts) {
     const accountTokenBalanceResult0 = await testToken1.balanceOf(fund.address);
     assert.equal(accountTokenBalanceResult0.toNumber(), 100 * Math.pow(10, 18));
 
-    await fund.closeAndWithdraw({
+    await fund.op(OperationCloseAndWithdraw, 0, {
       from: accountFundOwner
     });
     const newOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
     assert(newOwnerBalance - originOwnerBalance > web3.toWei(10 - 0.01, "ether"));
     assert(newOwnerBalance - originOwnerBalance < web3.toWei(10, "ether"));
 
-    await fund.distributeToken(testToken1.address, {
+    await fund.op(OperationDistributeToken, testToken1.address, {
       from: accountFundOwner
     });
     assert.equal((await testToken1.balanceOf(accountFundAttender1)).toNumber(), 95 * Math.pow(10, 18));
@@ -268,14 +262,13 @@ contract('DFund', function(accounts) {
     const testToken2 = await TestToken2.new({
       from: accountCoin2Holder
     });
+    const closingTime = Math.floor(Date.now() / 1000 + 60);
     const fund = await DFund.new(
       "complex fund",
       3,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
-      Math.floor(Date.now() / 1000 + 60), {
+      closingTime, {
         from: accountFundOwner
       }
     );
@@ -295,6 +288,27 @@ contract('DFund', function(accounts) {
       value: web3.toWei(2, "ether")
     });
 
+    const status = await fund.read(ReadData, 0, {
+      from: accountFundAttender3
+    });
+    // softCap, hardCap, closingTime, totalFund, isClosed, investorCount, myInvestedAmount
+    assert.equal(JSON.stringify(status), `["10000000000000000000","100000000000000000000","${closingTime}","15000000000000000000","0","3","2000000000000000000"]`);
+
+    // [addr, amount, addr, amount ...]
+    const attenderList = (await fund.read(ReadAttender, status[5])).map((a, index) => {
+      if (index % 2) return a;
+      const p = '0000000000000000000000000000000000000000' + a.toString(16);
+      return '0x' + p.substr(p.length - 40);
+    });
+    assert.equal(JSON.stringify(attenderList), JSON.stringify([
+      accountFundAttender1,
+      web3.toWei(10, "ether"),
+      accountFundAttender2,
+      web3.toWei(3, "ether"),
+      accountFundAttender3,
+      web3.toWei(2, "ether"),
+    ]));
+
     const originOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
     await testToken1.transfer(fund.address, 100 * Math.pow(10, 18), {
       from: accountCoin1Holder
@@ -306,7 +320,7 @@ contract('DFund', function(accounts) {
       from: accountCoin2Holder
     });
 
-    await fund.closeAndWithdraw({
+    await fund.op(OperationCloseAndWithdraw, 0, {
       from: accountFundOwner
     });
     const newOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
@@ -319,10 +333,10 @@ contract('DFund', function(accounts) {
     assert.equal((await testToken2.balanceOf(fund.address)).toNumber(), 250 * Math.pow(10, 18));
     
 
-    await fund.distributeToken(testToken1.address, {
+    await fund.op(OperationDistributeToken, testToken1.address, {
       from: accountFundOwner
     });
-    await fund.distributeToken(testToken2.address, {
+    await fund.op(OperationDistributeToken, testToken2.address, {
       from: accountFundOwner
     });
     
@@ -366,10 +380,8 @@ contract('DFund', function(accounts) {
     const fund = await DFund.new(
       "ether fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000 + 60), {
         from: accountFundOwner
       }
@@ -389,7 +401,7 @@ contract('DFund', function(accounts) {
     });
 
 
-    await fund.closeAndWithdraw({
+    await fund.op(OperationCloseAndWithdraw, 0, {
       from: accountFundOwner
     });
 
@@ -404,7 +416,7 @@ contract('DFund', function(accounts) {
     const originFundOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
 
     // distribute them
-    await fund.distributeToken(0, {
+    await fund.op(OperationDistributeToken, 0, {
       from: accountFundOwner
     });
 
@@ -438,10 +450,8 @@ contract('DFund', function(accounts) {
     const fund = await DFund.new(
       "ether fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(10, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
       Math.floor(Date.now() / 1000 + 60), {
         from: accountFundOwner
       }
@@ -465,7 +475,7 @@ contract('DFund', function(accounts) {
     const originFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
 
     // refund
-    await fund.closeAndRefundAll({
+    await fund.op(OperationCloseAndRefundall, 0, {
       from: accountFundOwner
     });
 
@@ -487,15 +497,13 @@ contract('DFund', function(accounts) {
       accountFundAttender2,
       accountFundAttender3,
     ] = accounts;
-
+    const closingTime = Math.floor(Date.now() / 1000 + 60);
     const fund = await DFund.new(
       "ether fund",
       5,
-      web3.toWei(1, "ether"),
       web3.toWei(20, "ether"),
       web3.toWei(100, "ether"),
-      Math.floor(Date.now() / 1000),
-      Math.floor(Date.now() / 1000 + 60), {
+      closingTime, {
         from: accountFundOwner
       }
     );
@@ -505,7 +513,7 @@ contract('DFund', function(accounts) {
       from: accountFundAttender3,
       value: web3.toWei(18, "ether")
     });
-    await fund.refund({
+    await fund.op(OperationRefund, 0, {
       from: accountFundAttender3
     });
     await fund.sendTransaction({
@@ -517,21 +525,21 @@ contract('DFund', function(accounts) {
       value: web3.toWei(1, "ether")
     });
     // Attender2 refunded first 18 eth
-    await fund.refund({
+    await fund.op(OperationRefund, 0, {
       from: accountFundAttender2
     });
     await fund.sendTransaction({
       from: accountFundAttender1,
       value: web3.toWei(9, "ether")
     });
-    // Attender3 then give another 10 eth
+    // Attender2 then give another 10 eth
     await fund.sendTransaction({
       from: accountFundAttender2,
       value: web3.toWei(10, "ether")
     });
     // soft cap reached, cannot go refund
     await assertThrowsAsync(async () => {
-      await fund.refund({
+      await fund.op(OperationRefund, 0, {
         from: accountFundAttender2
       });
     }, {
@@ -539,7 +547,7 @@ contract('DFund', function(accounts) {
       Message: 'VM Exception while processing transaction: revert',
     });
 
-    await fund.closeAndWithdraw({
+    await fund.op(OperationCloseAndWithdraw, 0, {
       from: accountFundOwner
     });
     // send profit as eth
@@ -548,27 +556,32 @@ contract('DFund', function(accounts) {
       value: web3.toWei(40, "ether")
     });
 
-    const originFundAttender1Balance = (await getBalance(accountFundAttender1)).toNumber();
-    const originFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
-    const originFundAttender3Balance = (await getBalance(accountFundAttender3)).toNumber();
+    const originFundAttender1Balance = await getBalance(accountFundAttender1);
+    const originFundAttender2Balance = await getBalance(accountFundAttender2);
+    const originFundAttender3Balance = await getBalance(accountFundAttender3);
 
     // distribute them
-    await fund.distributeToken(0, {
+    await fund.op(OperationDistributeToken, 0, {
       from: accountFundOwner
     });
 
-    const updatedFundAttender1Balance = (await getBalance(accountFundAttender1)).toNumber();
-    const updatedFundAttender2Balance = (await getBalance(accountFundAttender2)).toNumber();
-    const updatedFundAttender3Balance = (await getBalance(accountFundAttender3)).toNumber();
-    
+    const updatedFundAttender1Balance = await getBalance(accountFundAttender1);
+    const updatedFundAttender2Balance = await getBalance(accountFundAttender2);
+    const updatedFundAttender3Balance = await getBalance(accountFundAttender3);
+
+    // softCap, hardCap, closingTime, totalFund, isClosed, investorCount, myInvestedAmount
+    assert.equal(JSON.stringify(await fund.read(ReadData, 0, {
+      from: accountFundAttender1,
+    })), `["20000000000000000000","100000000000000000000","${closingTime}","20000000000000000000","1","3","10000000000000000000"]`);
+
     assert.equal(
-      updatedFundAttender1Balance - originFundAttender1Balance,
+      updatedFundAttender1Balance.sub(originFundAttender1Balance).toNumber(),
       web3.toWei(20 * 0.95, "ether"));
     assert.equal(
-      updatedFundAttender2Balance - originFundAttender2Balance,
+      updatedFundAttender2Balance.sub(originFundAttender2Balance).toNumber(),
       web3.toWei(20 * 0.95, "ether"));
     assert.equal(
-      updatedFundAttender3Balance - originFundAttender3Balance,
+      updatedFundAttender3Balance.sub(originFundAttender3Balance).toNumber(),
       0);
   });
 });
