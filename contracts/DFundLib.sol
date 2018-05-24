@@ -31,14 +31,15 @@ library DFundLib {
     function read(Data storage self, Read _o, uint _args, address _sender) external view returns (uint256[]) {
         uint256[] memory result;
         if (_o == Read.DumpData) {
-            result = new uint256[](7);
+            result = new uint256[](8);
             result[0] = self.softCap;
             result[1] = self.hardCap;
             result[2] = self.closingTime;
-            result[3] = self.totalFund;
-            result[4] = (self.closed || (self.closingTime > 0 && block.timestamp > self.closingTime)) ? 1 : 0;
-            result[5] = self.investor.length;
-            result[6] = self.shareAmount[_sender];
+            result[3] = uint256(self.operator);
+            result[4] = self.totalFund;
+            result[5] = (self.closed || (self.closingTime > 0 && block.timestamp > self.closingTime)) ? 1 : 0;
+            result[6] = self.investor.length;
+            result[7] = self.shareAmount[_sender];
         } else if (_o == Read.DumpInvestorAddressAndAmount) {
             uint userLength = self.investor.length;
             require(_args <= userLength);

@@ -63,8 +63,9 @@ contract('DFund', function(accounts) {
         from: accountFundOwner
       }
     );
-    // softCap, hardCap, closingTime, totalFund, isClosed, investorCount, myInvestedAmount
-    assert.equal(JSON.stringify(await fund.read(ReadData, 0)), `["10000000000000000000","100000000000000000000","${toTime}","0","0","0","0"]`);
+    
+    // softCap, hardCap, closingTime, operatorAddress, totalFund, isClosed, investorCount, myInvestedAmount
+    assert.equal(JSON.stringify(await fund.read(ReadData, 0)), `["10000000000000000000","100000000000000000000","${toTime}","${new web3.BigNumber(accountFundOwner).toString()}","0","0","0","0"]`);
     assert.equal(await fund.description(), "simple fund");
     
   });
@@ -147,10 +148,10 @@ contract('DFund', function(accounts) {
       from: accountFundAttender1,
       value: web3.toWei(10, "ether")
     });
-    // softCap, hardCap, closingTime, totalFund, isClosed, investorCount, myInvestedAmount
+    // softCap, hardCap, closingTime, operatorAddress, totalFund, isClosed, investorCount, myInvestedAmount
     assert.equal(JSON.stringify(await fund.read(ReadData, 0, {
       from: accountFundAttender1,
-    })), `["10000000000000000000","20000000000000000000","${closingTime}","10000000000000000000","0","1","10000000000000000000"]`);
+    })), `["10000000000000000000","20000000000000000000","${closingTime}","${new web3.BigNumber(accountFundOwner).toString()}","10000000000000000000","0","1","10000000000000000000"]`);
     
     await fund.sendTransaction({
       from: accountFundAttender1,
@@ -291,11 +292,11 @@ contract('DFund', function(accounts) {
     const status = await fund.read(ReadData, 0, {
       from: accountFundAttender3
     });
-    // softCap, hardCap, closingTime, totalFund, isClosed, investorCount, myInvestedAmount
-    assert.equal(JSON.stringify(status), `["10000000000000000000","100000000000000000000","${closingTime}","15000000000000000000","0","3","2000000000000000000"]`);
+    // softCap, hardCap, closingTime, operatorAddress, totalFund, isClosed, investorCount, myInvestedAmount
+    assert.equal(JSON.stringify(status), `["10000000000000000000","100000000000000000000","${closingTime}","${new web3.BigNumber(accountFundOwner).toString()}","15000000000000000000","0","3","2000000000000000000"]`);
 
     // [addr, amount, addr, amount ...]
-    const attenderList = (await fund.read(ReadAttender, status[5])).map((a, index) => {
+    const attenderList = (await fund.read(ReadAttender, status[6])).map((a, index) => {
       if (index % 2) return a;
       const p = '0000000000000000000000000000000000000000' + a.toString(16);
       return '0x' + p.substr(p.length - 40);
@@ -569,10 +570,10 @@ contract('DFund', function(accounts) {
     const updatedFundAttender2Balance = await getBalance(accountFundAttender2);
     const updatedFundAttender3Balance = await getBalance(accountFundAttender3);
 
-    // softCap, hardCap, closingTime, totalFund, isClosed, investorCount, myInvestedAmount
+    // softCap, hardCap, closingTime, operatorAddress, totalFund, isClosed, investorCount, myInvestedAmount
     assert.equal(JSON.stringify(await fund.read(ReadData, 0, {
       from: accountFundAttender1,
-    })), `["20000000000000000000","100000000000000000000","${closingTime}","20000000000000000000","1","3","10000000000000000000"]`);
+    })), `["20000000000000000000","100000000000000000000","${closingTime}","${new web3.BigNumber(accountFundOwner).toString()}","20000000000000000000","1","3","10000000000000000000"]`);
 
     assert.equal(
       updatedFundAttender1Balance.sub(originFundAttender1Balance).toNumber(),
