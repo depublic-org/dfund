@@ -1,5 +1,5 @@
-var Fund = artifacts.require("./Fund.sol");
-var RewardDistributor = artifacts.require("./RewardDistributor.sol");
+var DFund = artifacts.require("./DFund.sol");
+var DFundLib = artifacts.require("./DFundLib.sol");
 var TestToken1 = artifacts.require("./TestToken1.sol");
 var TestToken2 = artifacts.require("./TestToken2.sol");
 async function assertThrowsAsync(fn, regExp) {
@@ -29,13 +29,24 @@ async function sleep(time) {
   })
 }
 
-contract('Fund', function(accounts) {
+contract('DFund', function(accounts) {
   it("should follow minimum invest amount settings", async () => {
     const [
       accountFundOwner,
       accountFundAttender1,
     ] = accounts;
-    const fund = await Fund.new(
+    const unusedFund = await DFund.new(
+      "unused fund",
+      5,
+      web3.toWei(1, "ether"),
+      web3.toWei(10, "ether"),
+      web3.toWei(100, "ether"),
+      Math.floor(Date.now() / 1000),
+      Math.floor(Date.now() / 1000 + 60), {
+        from: accountFundOwner
+      }
+    );
+    const fund = await DFund.new(
       "test fund",
       5,
       web3.toWei(1, "ether"),
@@ -46,9 +57,11 @@ contract('Fund', function(accounts) {
         from: accountFundOwner
       }
     );
-    const receipt = await web3.eth.getTransactionReceipt(fund.transactionHash);
-    console.log(`gas: ${receipt.gasUsed}`);
-    assert.isBelow(receipt.gasUsed, 3500000);
+    const receipt1 = await web3.eth.getTransactionReceipt(unusedFund.transactionHash);
+    console.log(`1st time gas usage: ${receipt1.gasUsed}`);
+    const receipt2 = await web3.eth.getTransactionReceipt(fund.transactionHash);
+    console.log(`2nd time gas usage: ${receipt2.gasUsed}`);
+    assert.isBelow(receipt2.gasUsed, 900000);
     // first recharge should success
     await fund.sendTransaction({
       from: accountFundAttender1,
@@ -69,7 +82,7 @@ contract('Fund', function(accounts) {
       accountFundOwner,
       accountFundAttender1,
     ] = accounts;
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "test fund",
       5,
       web3.toWei(1, "ether"),
@@ -101,7 +114,7 @@ contract('Fund', function(accounts) {
       accountFundOwner,
       accountFundAttender1,
     ] = accounts;
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "test fund",
       5,
       web3.toWei(1, "ether"),
@@ -138,7 +151,7 @@ contract('Fund', function(accounts) {
       accountFundAttender1,
     ] = accounts;
 
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "simple fund",
       5,
       web3.toWei(1, "ether"),
@@ -180,7 +193,7 @@ contract('Fund', function(accounts) {
     assert.equal(
       (await testToken1.balanceOf(accountCoin1Holder)).toNumber(),
       testToken1TotalSupply);
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "simple fund",
       5,
       web3.toWei(1, "ether"),
@@ -191,8 +204,6 @@ contract('Fund', function(accounts) {
         from: accountFundOwner
       }
     );
-    const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
-    assert.equal(fund.address, await rewardDistributor.owner());
   });
   it("can do basic token distribution", async () => {
     const [
@@ -204,7 +215,7 @@ contract('Fund', function(accounts) {
     const testToken1 = await TestToken1.new({
       from: accountCoin1Holder
     });
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "simple fund",
       5,
       web3.toWei(1, "ether"),
@@ -215,7 +226,6 @@ contract('Fund', function(accounts) {
         from: accountFundOwner
       }
     );
-    const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
 
     const originOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
     const rechargeResult0 = await fund.sendTransaction({
@@ -223,10 +233,10 @@ contract('Fund', function(accounts) {
       value: web3.toWei(10, "ether")
     });
 
-    const transferTokenResult0 = await testToken1.transfer(rewardDistributor.address, 100 * Math.pow(10, 18), {
+    const transferTokenResult0 = await testToken1.transfer(fund.address, 100 * Math.pow(10, 18), {
       from: accountCoin1Holder
     });
-    const accountTokenBalanceResult0 = await testToken1.balanceOf(rewardDistributor.address);
+    const accountTokenBalanceResult0 = await testToken1.balanceOf(fund.address);
     assert.equal(accountTokenBalanceResult0.toNumber(), 100 * Math.pow(10, 18));
 
     await fund.closeAndWithdraw({
@@ -258,7 +268,7 @@ contract('Fund', function(accounts) {
     const testToken2 = await TestToken2.new({
       from: accountCoin2Holder
     });
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "complex fund",
       3,
       web3.toWei(1, "ether"),
@@ -269,8 +279,6 @@ contract('Fund', function(accounts) {
         from: accountFundOwner
       }
     );
-    const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
-
 
     await fund.sendTransaction({
       from: accountFundAttender1,
@@ -287,18 +295,14 @@ contract('Fund', function(accounts) {
       value: web3.toWei(2, "ether")
     });
 
-    await rewardDistributor.sendTransaction({
-      from: accountFundOwner,
-      value: web3.toWei(3, "ether")
-    });
     const originOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
-    await testToken1.transfer(rewardDistributor.address, 100 * Math.pow(10, 18), {
+    await testToken1.transfer(fund.address, 100 * Math.pow(10, 18), {
       from: accountCoin1Holder
     });
-    await testToken2.transfer(rewardDistributor.address, 200 * Math.pow(10, 18), {
+    await testToken2.transfer(fund.address, 200 * Math.pow(10, 18), {
       from: accountCoin2Holder
     });
-    await testToken2.transfer(rewardDistributor.address, 50 * Math.pow(10, 18), {
+    await testToken2.transfer(fund.address, 50 * Math.pow(10, 18), {
       from: accountCoin2Holder
     });
 
@@ -311,8 +315,8 @@ contract('Fund', function(accounts) {
     assert(newOwnerBalance - originOwnerBalance < web3.toWei(15, "ether"));
     
 
-    assert.equal((await testToken1.balanceOf(rewardDistributor.address)).toNumber(), 100 * Math.pow(10, 18));
-    assert.equal((await testToken2.balanceOf(rewardDistributor.address)).toNumber(), 250 * Math.pow(10, 18));
+    assert.equal((await testToken1.balanceOf(fund.address)).toNumber(), 100 * Math.pow(10, 18));
+    assert.equal((await testToken2.balanceOf(fund.address)).toNumber(), 250 * Math.pow(10, 18));
     
 
     await fund.distributeToken(testToken1.address, {
@@ -359,7 +363,7 @@ contract('Fund', function(accounts) {
       accounts[6],
     ];
 
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "ether fund",
       5,
       web3.toWei(1, "ether"),
@@ -370,7 +374,6 @@ contract('Fund', function(accounts) {
         from: accountFundOwner
       }
     );
-    const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
 
     await fund.sendTransaction({
       from: accountFundAttender1,
@@ -391,7 +394,7 @@ contract('Fund', function(accounts) {
     });
 
     // send profit as eth
-    await rewardDistributor.sendTransaction({
+    await fund.sendTransaction({
       from: accountFundOwner,
       value: web3.toWei(75, "ether")
     });
@@ -401,7 +404,7 @@ contract('Fund', function(accounts) {
     const originFundOwnerBalance = (await getBalance(accountFundOwner)).toNumber();
 
     // distribute them
-    await fund.distributeEther({
+    await fund.distributeToken(0, {
       from: accountFundOwner
     });
 
@@ -432,7 +435,7 @@ contract('Fund', function(accounts) {
       accounts[9],
     ];
 
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "ether fund",
       5,
       web3.toWei(1, "ether"),
@@ -443,7 +446,6 @@ contract('Fund', function(accounts) {
         from: accountFundOwner
       }
     );
-    const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
 
     await fund.sendTransaction({
       from: accountFundAttender1,
@@ -486,7 +488,7 @@ contract('Fund', function(accounts) {
       accountFundAttender3,
     ] = accounts;
 
-    const fund = await Fund.new(
+    const fund = await DFund.new(
       "ether fund",
       5,
       web3.toWei(1, "ether"),
@@ -497,7 +499,6 @@ contract('Fund', function(accounts) {
         from: accountFundOwner
       }
     );
-    const rewardDistributor = await RewardDistributor.at(await fund.rewardDistributor());
 
     // Attender3 refunded all
     await fund.sendTransaction({
@@ -542,7 +543,7 @@ contract('Fund', function(accounts) {
       from: accountFundOwner
     });
     // send profit as eth
-    await rewardDistributor.sendTransaction({
+    await fund.sendTransaction({
       from: accountFundOwner,
       value: web3.toWei(40, "ether")
     });
@@ -552,7 +553,7 @@ contract('Fund', function(accounts) {
     const originFundAttender3Balance = (await getBalance(accountFundAttender3)).toNumber();
 
     // distribute them
-    await fund.distributeEther({
+    await fund.distributeToken(0, {
       from: accountFundOwner
     });
 
