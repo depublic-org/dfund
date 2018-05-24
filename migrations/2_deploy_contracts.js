@@ -5,7 +5,7 @@ var FreeToken = artifacts.require("./FreeToken.sol");
 module.exports = function(deployer, network) {
   deployer.deploy(DFundLib);
   deployer.link(DFundLib, DFund);
-  if (['test', 'dev', 'development', 'develop'].indexOf(network) > -1) {
-    const freeToken = deployer.deploy(FreeToken);
+  if (['test', 'dev', 'development', 'develop', 'ropsten'].indexOf(network) > -1) {
+    deployer.deploy(FreeToken);
   }
 };
