@@ -21,6 +21,7 @@ library DFundLib {
         uint256 totalFund;
         bool closed;
 
+        uint256 minimumInvestAmount;
 
         address[] investor;
         mapping (address => uint256) shareAmount;
@@ -31,7 +32,7 @@ library DFundLib {
     function read(Data storage self, Read _o, uint _args, address _sender) external view returns (uint256[]) {
         uint256[] memory result;
         if (_o == Read.DumpData) {
-            result = new uint256[](8);
+            result = new uint256[](9);
             result[0] = self.softCap;
             result[1] = self.hardCap;
             result[2] = self.closingTime;
@@ -40,6 +41,7 @@ library DFundLib {
             result[5] = (self.closed || (self.closingTime > 0 && block.timestamp > self.closingTime)) ? 1 : 0;
             result[6] = self.investor.length;
             result[7] = self.shareAmount[_sender];
+            result[8] = self.minimumInvestAmount;
         } else if (_o == Read.DumpInvestorAddressAndAmount) {
             uint userLength = self.investor.length;
             require(_args <= userLength);
@@ -99,8 +101,7 @@ library DFundLib {
             require(_sender == self.operator);
         } else {
             // before closing, DFund accept eth from crowd
-            // require(_value >= self.minimumInvestAmount);
-
+            require(_value >= self.minimumInvestAmount);
             uint size;
             assembly { size := extcodesize(_sender) }
             require(size == 0);

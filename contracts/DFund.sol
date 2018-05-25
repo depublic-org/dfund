@@ -9,7 +9,8 @@ contract DFund {
         uint8 _sharePresentForDistributor,
         uint256 _softCap,
         uint256 _hardCap,
-        uint64 _closingTime
+        uint64 _closingTime,
+        uint256 _minimumInvestAmount
     )
         public
     {
@@ -22,6 +23,7 @@ contract DFund {
         data.hardCap = _hardCap;
         data.closingTime = _closingTime;
         data.sharePresentForDistributor = _sharePresentForDistributor;
+        data.minimumInvestAmount = _minimumInvestAmount;
     }
 
     function () external payable {
