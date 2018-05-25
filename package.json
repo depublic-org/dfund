@@ -13,9 +13,9 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "openzeppelin-solidity": "^1.9.0"
+    "openzeppelin-solidity": "^1.9.0",
+    "truffle-hdwallet-provider": "^0.0.5"
   },
   "devDependencies": {
-    "truffle-hdwallet-provider": "^0.0.5"
   }
 }

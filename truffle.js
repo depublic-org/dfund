@@ -5,10 +5,10 @@ module.exports = {
   networks: {
     ropsten: {
       provider: function() {
-        return new HDWalletProvider(secret.ropsten.mnemonic, "https://ropsten.infura.io/" + secret.ropsten.infura_api_key)
+        return new HDWalletProvider(secret.truffle.ropsten.mnemonic, "https://ropsten.infura.io/" + secret.truffle.ropsten.infura_api_key)
       },
       network_id: 3,
-      from: secret.ropsten.sender_address
+      from: secret.truffle.ropsten.sender_address
     }
   }
 };
